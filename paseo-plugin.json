@@ -1,0 +1,7 @@
+{
+  "id": "cpa-usage",
+  "name": "CLIProxyAPI usage",
+  "requirements": {
+    "paseo": ">=0.15.3"
+  }
+}
