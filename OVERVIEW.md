@@ -4,4 +4,4 @@ The plugin finds the running `cli-proxy-api.exe` on Windows and reads the server
 
 Settings, under Settings > Plugins: connection status and a connection test, a switch per provider found in the pool, and a minimum refresh interval per account.
 
-Quota readers exist for Codex and Claude accounts. Accounts of other providers are listed as having no quota API. Requires Paseo 0.15.3 or later.
+Quota readers exist for Codex and Claude accounts. Claude cards also show weekly limits scoped to one model, such as Fable, next to the 5-hour and weekly windows. Accounts of other providers are listed as having no quota API. Requires Paseo 0.15.3 or later.
