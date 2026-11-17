@@ -2,11 +2,35 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { hashAccountKey, unavailable, type UsageReport } from "@getpaseo/plugin/server/usage";
 import { z } from "zod";
 import { cpaSettings, statusRpc } from "./shared/contracts";
-import { connect, listAccounts } from "./server/cpa";
+import { connect, listAccounts, type AuthFile } from "./server/cpa";
 import { QUOTA } from "./server/quota";
 
 const input = z.object({ name: z.string(), provider: z.string() }).strict();
 type Values = z.output<typeof cpaSettings.schema>;
+
+/**
+ * CPA auth-file providers that get their own Usage source, so each card is titled "CPA (<provider>)".
+ * Paseo only accepts usage sources registered while the plugin starts, so the list is fixed;
+ * accounts of any other provider go to the "CPA" fallback source.
+ */
+const PROVIDERS: Record<string, string> = {
+  codex: "Codex",
+  claude: "Claude",
+  antigravity: "Antigravity",
+  gemini: "Gemini",
+  "gemini-cli": "Gemini CLI",
+  aistudio: "AI Studio",
+  vertex: "Vertex",
+  kimi: "Kimi",
+  xai: "Grok",
+  devin: "Devin",
+  meta: "Meta",
+  qwen: "Qwen",
+  iflow: "iFlow",
+};
+
+const known = (provider: string) => Object.hasOwn(PROVIDERS, provider);
+const providerName = (provider: string) => (known(provider) ? PROVIDERS[provider] : provider);
 
 export default function contribute(server: PluginServerContext) {
   let values: Values = cpaSettings.schema.parse({});
@@ -20,33 +44,55 @@ export default function contribute(server: PluginServerContext) {
   void settings.read().then(apply, (error) => console.error("CPA settings read failed", error));
   const unsubscribe = settings.subscribe(apply);
 
+  const enabled = (file: AuthFile) => !values.disabledProviders.includes(file.provider ?? "");
+  const account = (file: AuthFile, withProvider: boolean) => ({
+    key: `cpa-${hashAccountKey(file.name).slice(0, 40)}`,
+    label: [withProvider ? file.provider : "", file.note, file.label || file.email, file.disabled ? "(disabled)" : ""]
+      .filter(Boolean)
+      .join(" · "),
+    harness: `CPA (${providerName(file.provider ?? "")})`,
+    input: { name: file.name, provider: file.provider ?? "" },
+  });
+
+  async function fetchQuota(raw: unknown): Promise<UsageReport> {
+    const { name, provider } = input.parse(raw);
+    const read = QUOTA[provider];
+    if (!read) return unavailable({ kind: "no_quota", detail: `No quota API for ${provider} accounts` });
+    const hit = cache.get(name);
+    if (hit && Date.now() - hit.at < values.refreshMinutes * 60_000) return hit.report;
+    const file = (await listAccounts()).find((entry) => entry.name === name);
+    if (!file) return { status: "error", error: "Account no longer in the CPA pool" };
+    const report = await read(file);
+    if (report.status === "available") cache.set(name, { at: Date.now(), report });
+    return report;
+  }
+
+  for (const [provider, name] of Object.entries(PROVIDERS)) {
+    server.registerUsageSource({
+      id: `cliproxyapi.${provider}`,
+      label: `CPA (${name})`,
+      input,
+      async discover(scope) {
+        if (scope.kind !== "global") return [];
+        // A CPA outage is reported once, by the fallback source below.
+        const files = await listAccounts().catch(() => []);
+        return files.filter((file) => file.provider === provider && enabled(file)).map((file) => account(file, false));
+      },
+      fetch: fetchQuota,
+    });
+  }
+
   server.registerUsageSource({
     id: "cliproxyapi",
-    label: "CLIProxyAPI",
+    label: "CPA",
     input,
     async discover(scope) {
       if (scope.kind !== "global") return [];
       return (await listAccounts())
-        .filter((file) => !values.disabledProviders.includes(file.provider ?? ""))
-        .map((file) => ({
-          key: `cpa-${hashAccountKey(file.name).slice(0, 40)}`,
-          label: [file.note, file.label || file.email, file.disabled ? "(disabled)" : ""].filter(Boolean).join(" · "),
-          harness: `CPA ${file.provider}`,
-          input: { name: file.name, provider: file.provider ?? "" },
-        }));
+        .filter((file) => !known(file.provider ?? "") && enabled(file))
+        .map((file) => account(file, true));
     },
-    async fetch(raw) {
-      const { name, provider } = input.parse(raw);
-      const read = QUOTA[provider];
-      if (!read) return unavailable({ kind: "no_quota", detail: `No quota API for ${provider} accounts` });
-      const hit = cache.get(name);
-      if (hit && Date.now() - hit.at < values.refreshMinutes * 60_000) return hit.report;
-      const file = (await listAccounts()).find((entry) => entry.name === name);
-      if (!file) return { status: "error", error: "Account no longer in the CPA pool" };
-      const report = await read(file);
-      if (report.status === "available") cache.set(name, { at: Date.now(), report });
-      return report;
-    },
+    fetch: fetchQuota,
   });
 
   server.handle(statusRpc, async ({ probe }) => {

@@ -1,7 +1,7 @@
-Shows the subscription quota of every OAuth account in a local CLIProxyAPI (CPA) or EasyCLIProxyAPI pool in the Paseo Usage view. Each account gets its own card with remaining percentage per window and its reset time.
+Shows the subscription quota of every OAuth account in a local CLIProxyAPI (CPA) or EasyCLIProxyAPI pool in the Paseo Usage view. Each account gets its own card with the remaining percentage per window and its reset time. Cards are titled by provider, such as `CPA (Codex)` and `CPA (Claude)`, so accounts of one provider sort together. Accounts of a provider the plugin does not know appear under `CPA`, with the provider name in the account line.
 
-The plugin finds the running `cli-proxy-api.exe` on Windows, reads the server port and the Management Key from the local config files next to it (`config.toml` of EasyCLIProxyAPI, then `config.yaml`), or from the `CPA_MANAGEMENT_KEY` environment variable. The key never leaves the daemon. Quotas are read through CPA's management `api-call` proxy, so account tokens stay inside CPA. The plugin only reads; it never changes CPA settings or the account pool.
+The plugin finds the running `cli-proxy-api.exe` on Windows and reads the server port and the Management Key from the local config files next to it (`config.toml` of EasyCLIProxyAPI, then `config.yaml`). On other systems, or to override the file, set `CPA_MANAGEMENT_KEY` in the daemon's environment; the plugin then also tries `http://127.0.0.1:8317`. The key never leaves the daemon. Quotas are read through CPA's management `api-call` proxy, so account tokens stay inside CPA. The plugin only reads; it never changes CPA settings or the account pool.
 
 Settings, under Settings > Plugins: connection status and a connection test, a switch per provider found in the pool, and a minimum refresh interval per account.
 
-Quota readers exist for Codex and Claude accounts. Accounts of other providers are listed as having no quota API.
+Quota readers exist for Codex and Claude accounts. Accounts of other providers are listed as having no quota API. Requires Paseo 0.15.3 or later.
