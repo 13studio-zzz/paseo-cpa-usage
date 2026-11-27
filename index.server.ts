@@ -56,12 +56,12 @@ export default function contribute(server: PluginServerContext) {
 
   async function fetchQuota(raw: unknown): Promise<UsageReport> {
     const { name, provider } = input.parse(raw);
-    const read = QUOTA[provider];
+    const read = Object.hasOwn(QUOTA, provider) ? QUOTA[provider] : undefined;
     if (!read) return unavailable({ kind: "no_quota", detail: `No quota API for ${provider} accounts` });
+    const file = (await listAccounts()).find((entry) => entry.name === name && entry.provider === provider);
+    if (!file) return { status: "error", error: "Account no longer in the CPA pool" };
     const hit = cache.get(name);
     if (hit && Date.now() - hit.at < values.refreshMinutes * 60_000) return hit.report;
-    const file = (await listAccounts()).find((entry) => entry.name === name);
-    if (!file) return { status: "error", error: "Account no longer in the CPA pool" };
     const report = await read(file);
     if (report.status === "available") cache.set(name, { at: Date.now(), report });
     return report;

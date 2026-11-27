@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -55,6 +56,7 @@ async function request<T>(conn: Pick<Connection, "baseUrl" | "key">, path: strin
     headers: { Authorization: `Bearer ${conn.key}`, "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: deadline(18_000),
+    redirect: "error",
   });
   if (!res.ok) throw Object.assign(new Error(`CPA management API ${path}: HTTP ${res.status}`), { status: res.status });
   return (await res.json()) as T;
@@ -66,28 +68,37 @@ async function request<T>(conn: Pick<Connection, "baseUrl" | "key">, path: strin
  */
 async function discover(): Promise<Connection> {
   const envKey = process.env.CPA_MANAGEMENT_KEY || process.env.MANAGEMENT_PASSWORD;
-  const dirs = (await processDirs().catch(() => [])).flatMap((dir) => [dir, dirname(dir)]);
+  const mac = process.platform === "darwin";
+  const dirs = mac
+    ? [join(homedir(), "Library", "Application Support", "com.cpa.gui")]
+    : (await processDirs().catch(() => [])).flatMap((dir) => [dir, dirname(dir)]);
   const candidates: Connection[] = [];
   for (const dir of [...new Set(dirs)]) {
     const toml = await read(join(dir, "config.toml"));
-    const yaml = await read(join(dir, "config.yaml"));
+    const yamlPath = join(mac ? join(dir, "cpa-core") : dir, "config.yaml");
+    const yaml = await read(yamlPath);
     if (!toml && !yaml) continue;
     let host = pick(toml, /^host\s*=\s*"([^"]*)"/m) || "127.0.0.1";
-    if (host === "0.0.0.0" || host === "::") host = "127.0.0.1";
+    if (mac) {
+      // Mac의 관리 키는 로컬 루프백 주소에서만 사용한다.
+      host = ["::", "::1", "[::1]"].includes(host) ? "[::1]" : "127.0.0.1";
+    } else if (host === "0.0.0.0" || host === "::") {
+      host = "127.0.0.1";
+    }
     const port = pick(toml, /^port\s*=\s*(\d+)/m) ?? pick(yaml, /^\s*port:\s*(\d+)/m) ?? "8317";
     const tls = /^\s*tls:\s*\n\s*enable:\s*true/m.test(yaml);
     const baseUrl = `${tls ? "https" : "http"}://${host}:${port}`;
     const keys = [
       envKey && { key: envKey, via: "environment" },
       { key: pick(toml, /^management-secret-key\s*=\s*"([^"]+)"/m), via: join(dir, "config.toml") },
-      { key: pick(yaml, /^\s+secret-key:\s*"?([^"\s#]+)"?/m), via: join(dir, "config.yaml") },
+      { key: pick(yaml, /^\s+secret-key:\s*"?([^"\s#]+)"?/m), via: yamlPath },
     ];
     for (const entry of keys) {
       if (entry && entry.key && !entry.key.startsWith("$2")) candidates.push({ baseUrl, key: entry.key, via: entry.via });
     }
   }
   if (envKey) candidates.push({ baseUrl: "http://127.0.0.1:8317", key: envKey, via: "environment" });
-  if (!candidates.length) throw new Error("CPA not found: no running cli-proxy-api.exe with a readable Management Key");
+  if (!candidates.length) throw new Error("CPA not found: check the local EasyCLIProxyAPI settings or set CPA_MANAGEMENT_KEY");
   let lastError: unknown;
   for (const candidate of candidates) {
     try {

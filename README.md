@@ -4,12 +4,14 @@ A [Paseo](https://paseo.sh) plugin that shows the quota of every OAuth account i
 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) (CPA) or EasyCLIProxyAPI pool in
 Paseo's Usage view and `paseo usage`. Cards are titled by provider: `CPA (Codex)`, `CPA (Claude)`.
 
+On macOS, start EasyCLIProxyAPI and open Paseo’s Usage view. The plugin reads the local app configuration automatically. This fork adds macOS support to [eerraa/paseo-cpa-usage](https://github.com/eerraa/paseo-cpa-usage).
+
 See [OVERVIEW.md](OVERVIEW.md) for what it reads and where.
 
 ## Install
 
 ```bash
-paseo plugin add git:eerraa/paseo-cpa-usage
+paseo plugin add git:13studio-zzz/paseo-cpa-usage
 ```
 
 Plugins must be enabled on the daemon (Settings > Plugins). Requires Paseo 0.15.3 or later.
