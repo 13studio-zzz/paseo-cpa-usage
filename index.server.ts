@@ -61,9 +61,15 @@ export default function contribute(server: PluginServerContext) {
     const file = (await listAccounts()).find((entry) => entry.name === name && entry.provider === provider);
     if (!file) return { status: "error", error: "Account no longer in the CPA pool" };
     const hit = cache.get(name);
-    if (hit && Date.now() - hit.at < values.refreshMinutes * 60_000) return hit.report;
-    const report = await read(file);
-    if (report.status === "available") cache.set(name, { at: Date.now(), report });
+    const cached = hit && Date.now() - hit.at < values.refreshMinutes * 60_000;
+    const report = cached ? hit.report : await read(file);
+    if (!cached && report.status === "available") cache.set(name, { at: Date.now(), report });
+    // 한도 캐시와 별도로 계정 목록에서 현재 라우팅 우선순위를 가져온다.
+    if (provider === "claude" && report.status === "available" && Number.isInteger(file.priority)) {
+      return { ...report, details: [...(report.details ?? []), {
+        id: "cpa-routing-priority", label: "Routing priority", value: String(file.priority),
+      }] };
+    }
     return report;
   }
 

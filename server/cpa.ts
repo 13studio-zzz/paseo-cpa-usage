@@ -15,6 +15,7 @@ export interface AuthFile {
   email?: string;
   note?: string;
   disabled?: boolean;
+  priority?: number;
   id_token?: { chatgpt_account_id?: string; plan_type?: string };
 }
 
